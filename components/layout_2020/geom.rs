@@ -67,6 +67,19 @@ impl<T: Default> Default for LogicalVec2<T> {
     }
 }
 
+impl<T> LogicalVec2<T> {
+    pub fn map_inline_and_block_axes<U>(
+        &self,
+        inline_f: impl Fn(&T) -> U,
+        block_f: impl Fn(&T) -> U,
+    ) -> LogicalVec2<U> {
+        LogicalVec2 {
+            inline: inline_f(&self.inline),
+            block: block_f(&self.block),
+        }
+    }
+}
+
 impl<T: Clone> LogicalVec2<T> {
     pub fn from_physical_size(physical_size: &PhysicalSize<T>, mode: WritingMode) -> Self {
         // https://drafts.csswg.org/css-writing-modes/#logical-to-physical
