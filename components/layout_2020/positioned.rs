@@ -30,7 +30,7 @@ use crate::geom::{
     PhysicalRect, PhysicalVec, Size, Sizes, ToLogical, ToLogicalWithContainingBlock,
 };
 use crate::sizing::ContentSizes;
-use crate::style_ext::{ComputedValuesExt, ContentBoxSizesAndPBM, DisplayInside};
+use crate::style_ext::{Clamp, ComputedValuesExt, ContentBoxSizesAndPBM, DisplayInside};
 use crate::{
     ConstraintSpace, ContainingBlock, ContainingBlockSize, DefiniteContainingBlock, SizeConstraint,
 };
@@ -717,7 +717,7 @@ impl HoistedAbsolutelyPositionedBox {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct RectAxis {
     origin: Au,
     length: Au,
@@ -984,18 +984,36 @@ impl AbsoluteAxisSolver<'_> {
         };
 
         let free_space = alignment_container.length - size;
-        let alignment = if self.alignment.flags() == AlignFlags::SAFE && free_space < Au::zero() {
+        let flags = self.alignment.flags();
+        let alignment = if flags == AlignFlags::SAFE && free_space < Au::zero() {
             AlignFlags::START
         } else {
             alignment
         };
 
-        match alignment {
+        let origin = match alignment {
             AlignFlags::START => alignment_container.origin,
             AlignFlags::CENTER => alignment_container.origin + free_space / 2,
             AlignFlags::END => alignment_container.origin + free_space,
             _ => unreachable!(),
+        };
+        if matches!(flags, AlignFlags::SAFE | AlignFlags::UNSAFE) ||
+            matches!(
+                self.alignment,
+                AlignFlags::NORMAL | AlignFlags::AUTO | AlignFlags::STRETCH
+            ) ||
+            self.box_offsets.either_auto()
+        {
+            return origin;
         }
+
+        // Handle default overflow alignment.
+        // https://drafts.csswg.org/css-align/#auto-safety-position
+        let start_offset = alignment_container.origin;
+        let end_offset = self.containing_size - alignment_container.length - start_offset;
+        let min = Au::zero().min(start_offset);
+        let max = self.containing_size - Au::zero().min(end_offset) - size;
+        origin.clamp_between_extremums(min, Some(max))
     }
 }
 
