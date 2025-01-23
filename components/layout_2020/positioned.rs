@@ -536,7 +536,7 @@ impl HoistedAbsolutelyPositionedBox {
                 inline: inline_axis_solver.inset_sum(),
                 block: block_axis_solver.inset_sum(),
             };
-            let automatic_size = |alignment: AlignFlags, offsets: &AbsoluteBoxOffsets| {
+            let automatic_size = |alignment: AlignFlags, offsets: &AbsoluteBoxOffsets<_>| {
                 if alignment.value() == AlignFlags::STRETCH && !offsets.either_auto() {
                     Size::Stretch
                 } else {
@@ -739,18 +739,24 @@ impl LogicalRect<Au> {
 }
 
 #[derive(Debug)]
-struct AbsoluteBoxOffsets<'a> {
-    start: LengthPercentageOrAuto<'a>,
-    end: LengthPercentageOrAuto<'a>,
+struct AbsoluteBoxOffsets<T> {
+    start: T,
+    end: T,
 }
 
-impl AbsoluteBoxOffsets<'_> {
+impl AbsoluteBoxOffsets<LengthPercentageOrAuto<'_>> {
     pub(crate) fn either_specified(&self) -> bool {
         !self.start.is_auto() || !self.end.is_auto()
     }
 
     pub(crate) fn either_auto(&self) -> bool {
         self.start.is_auto() || self.end.is_auto()
+    }
+}
+
+impl AbsoluteBoxOffsets<Au> {
+    pub(crate) fn sum(&self) -> Au {
+        self.start + self.end
     }
 }
 
@@ -767,7 +773,7 @@ struct AbsoluteAxisSolver<'a> {
     computed_margin_end: AuOrAuto,
     computed_sizes: Sizes,
     avoid_negative_margin_start: bool,
-    box_offsets: AbsoluteBoxOffsets<'a>,
+    box_offsets: AbsoluteBoxOffsets<LengthPercentageOrAuto<'a>>,
     static_position_rect_axis: RectAxis,
     alignment: AlignFlags,
     flip_anchor: bool,
@@ -904,7 +910,7 @@ impl AbsoluteAxisSolver<'_> {
         original_parent_writing_mode: WritingMode,
         containing_block_writing_mode: WritingMode,
     ) -> Au {
-        let (alignment_container, alignment_container_writing_mode, flip_anchor) = match (
+        let (alignment_container, alignment_container_writing_mode, flip_anchor, offsets) = match (
             self.box_offsets.start.non_auto(),
             self.box_offsets.end.non_auto(),
         ) {
@@ -912,15 +918,23 @@ impl AbsoluteAxisSolver<'_> {
                 self.static_position_rect_axis,
                 original_parent_writing_mode,
                 self.flip_anchor,
+                None,
             ),
             (Some(start), Some(end)) => {
-                let start = start.to_used_value(self.containing_size);
-                let end = end.to_used_value(self.containing_size);
-                let alignment_container = RectAxis {
-                    origin: start,
-                    length: self.containing_size - (end + start),
+                let offsets = AbsoluteBoxOffsets {
+                    start: start.to_used_value(self.containing_size),
+                    end: end.to_used_value(self.containing_size),
                 };
-                (alignment_container, containing_block_writing_mode, false)
+                let alignment_container = RectAxis {
+                    origin: offsets.start,
+                    length: self.containing_size - offsets.sum(),
+                };
+                (
+                    alignment_container,
+                    containing_block_writing_mode,
+                    false,
+                    Some(offsets),
+                )
             },
             // If a single offset is auto, for alignment purposes it resolves to the amount
             // that makes the inset-modified containing block be exactly as big as the abspos.
@@ -1001,18 +1015,18 @@ impl AbsoluteAxisSolver<'_> {
             matches!(
                 self.alignment,
                 AlignFlags::NORMAL | AlignFlags::AUTO | AlignFlags::STRETCH
-            ) ||
-            self.box_offsets.either_auto()
+            )
         {
             return origin;
         }
+        let Some(offsets) = offsets else {
+            return origin;
+        };
 
         // Handle default overflow alignment.
         // https://drafts.csswg.org/css-align/#auto-safety-position
-        let start_offset = alignment_container.origin;
-        let end_offset = self.containing_size - alignment_container.length - start_offset;
-        let min = Au::zero().min(start_offset);
-        let max = self.containing_size - Au::zero().min(end_offset) - size;
+        let min = Au::zero().min(offsets.start);
+        let max = self.containing_size - Au::zero().min(offsets.end) - size;
         origin.clamp_between_extremums(min, Some(max))
     }
 }
