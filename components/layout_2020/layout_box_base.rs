@@ -61,6 +61,10 @@ impl LayoutBoxBase {
         }
 
         let result = layout_box.compute_inline_content_sizes(layout_context, constraint_space);
+        assert!(
+            result.sizes.min_content <= result.sizes.max_content,
+            "the max-content size should never be smaller than the min-content size"
+        );
         *cache = Some(Box::new((constraint_space.block_size, result)));
         result
     }
