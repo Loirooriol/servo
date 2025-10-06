@@ -1914,19 +1914,13 @@ impl InlineContainerState {
         font_metrics: Option<&FontMetrics>,
     ) -> Self {
         let font_metrics = font_metrics.cloned().unwrap_or_else(FontMetrics::empty);
-        let line_height = line_height(
-            &style,
-            &font_metrics,
-            flags.contains(InlineContainerStateFlags::IS_SINGLE_LINE_TEXT_INPUT),
-        );
-
         let mut baseline_offset = Au::zero();
         let mut strut_block_sizes = Self::get_block_sizes_with_style(
             effective_vertical_align(&style, parent_container),
             &style,
             &font_metrics,
             &font_metrics,
-            line_height,
+            &flags,
         );
         if let Some(parent_container) = parent_container {
             // The baseline offset from `vertical-align` might adjust where our block size contribution is
@@ -1961,8 +1955,10 @@ impl InlineContainerState {
         style: &ComputedValues,
         font_metrics: &FontMetrics,
         font_metrics_of_first_font: &FontMetrics,
-        line_height: Au,
+        flags: &InlineContainerStateFlags,
     ) -> LineBlockSizes {
+        let line_height = line_height(&style, &font_metrics, flags);
+
         if !is_baseline_relative(vertical_align) {
             return LineBlockSizes {
                 line_height,
@@ -1970,6 +1966,8 @@ impl InlineContainerState {
                 size_for_baseline_positioning: BaselineRelativeSize::zero(),
             };
         }
+
+        let line_height_is_normal = style.get_font().line_height == LineHeight::Normal;
 
         // From https://drafts.csswg.org/css-inline/#inline-height
         // > If line-height computes to `normal` and either `text-box-edge` is `leading` or this
@@ -1981,9 +1979,8 @@ impl InlineContainerState {
         // when `line-height` is normal.
         let mut ascent = font_metrics.ascent;
         let mut descent = font_metrics.descent;
-        if style.get_font().line_height == LineHeight::Normal {
-            let half_leading_from_line_gap =
-                (font_metrics.line_gap - descent - ascent).scale_by(0.5);
+        if line_height_is_normal {
+            let half_leading_from_line_gap = (line_height - descent - ascent).scale_by(0.5);
             ascent += half_leading_from_line_gap;
             descent += half_leading_from_line_gap;
         }
@@ -2008,7 +2005,7 @@ impl InlineContainerState {
         // zero in this case, the line may get some height when taking them into
         // considering with other zero line height boxes that converge on other block axis
         // locations when using the above formula.
-        if style.get_font().line_height != LineHeight::Normal {
+        if !line_height_is_normal {
             ascent = font_metrics_of_first_font.ascent;
             descent = font_metrics_of_first_font.descent;
             let half_leading = (line_height - (ascent + descent)).scale_by(0.5);
@@ -2038,12 +2035,7 @@ impl InlineContainerState {
             &self.style,
             font_metrics,
             font_metrics_of_first_font,
-            line_height(
-                &self.style,
-                font_metrics,
-                self.flags
-                    .contains(InlineContainerStateFlags::IS_SINGLE_LINE_TEXT_INPUT),
-            ),
+            &self.flags,
         )
     }
 
@@ -2279,12 +2271,19 @@ fn place_pending_floats(ifc: &mut InlineFormattingContextLayout, line_items: &mu
 fn line_height(
     parent_style: &ComputedValues,
     font_metrics: &FontMetrics,
-    is_single_line_text_input: bool,
+    flags: &InlineContainerStateFlags,
 ) -> Au {
     let font = parent_style.get_font();
     let font_size = font.font_size.computed_size();
+    let normal_size = || {
+        if font_size.is_zero() {
+            Au::zero()
+        } else {
+            font_metrics.line_gap
+        }
+    };
     let mut line_height = match font.line_height {
-        LineHeight::Normal => font_metrics.line_gap,
+        LineHeight::Normal => normal_size(),
         LineHeight::Number(number) => (font_size * number.0).into(),
         LineHeight::Length(length) => length.0.into(),
     };
@@ -2292,8 +2291,8 @@ fn line_height(
     // The line height of a single-line text input's inner text container is clamped to
     // the size of `normal`.
     // <https://html.spec.whatwg.org/multipage/#the-input-element-as-a-text-entry-widget>
-    if is_single_line_text_input {
-        line_height.max_assign(font_metrics.line_gap);
+    if flags.contains(InlineContainerStateFlags::IS_SINGLE_LINE_TEXT_INPUT) {
+        line_height.max_assign(normal_size());
     }
 
     line_height
