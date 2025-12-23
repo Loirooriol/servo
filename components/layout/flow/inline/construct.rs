@@ -260,7 +260,6 @@ impl InlineFormattingContextBuilder {
     }
 
     pub(crate) fn push_block_level_box(&mut self, block_level: ArcRefCell<BlockLevelBox>) {
-        assert!(self.currently_processing_inline_box());
         self.contains_floats = self.contains_floats || block_level.borrow().contains_floats();
         self.inline_items.push(InlineItem::BlockLevel(block_level));
     }
@@ -526,24 +525,20 @@ impl InlineFormattingContextBuilder {
         has_first_formatted_line: bool,
         is_single_line_text_input: bool,
         default_bidi_level: Level,
-    ) -> Option<InlineFormattingContext> {
-        if self.is_empty {
-            return None;
-        }
-
+    ) -> InlineFormattingContext {
         assert!(self.inline_box_stack.is_empty());
         debug_assert_eq!(
             self.offset_map.borrow().total_final_size(),
             self.current_character_offset
         );
 
-        Some(InlineFormattingContext::new_with_builder(
+        InlineFormattingContext::new_with_builder(
             self,
             layout_context,
             has_first_formatted_line,
             is_single_line_text_input,
             default_bidi_level,
-        ))
+        )
     }
 
     /// Push a soft wrap opportunity to this [`InlineFormattingContextBuilder`] which pushes

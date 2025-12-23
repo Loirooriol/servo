@@ -420,8 +420,10 @@ impl<'a, Handler: PaintTraversalHandler> PaintTraversal<'a, Handler> {
                 self.handler.visit_text(state, line_box_rect, text_fragment);
             },
             Fragment::AbsoluteOrFixedPositionedPlaceholder(..) | Fragment::Float(..) => {},
-            Fragment::Positioning(..) => {
-                unreachable!("Unexpected direct descendant PositioningContext of inline.")
+            Fragment::Positioning(fragment) => {
+                for child in &fragment.children {
+                    self.traverse_fragment_in_a_line_box(state, child, line_box_rect);
+                }
             },
             Fragment::Image(..) | Fragment::IFrame(..) => {
                 unreachable!("Unexpected replaced content direct descendant of inline.")

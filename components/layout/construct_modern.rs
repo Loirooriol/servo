@@ -90,14 +90,12 @@ impl<'dom> ModernContainerJob<'dom> {
                     );
                 }
 
-                let inline_formatting_context = inline_formatting_context_builder
-                    .finish(
-                        builder.context,
-                        true,  /* has_first_formatted_line */
-                        false, /* is_single_line_text_box */
-                        builder.info.style.to_bidi_level(),
-                    )
-                    .expect("Did not expect document white space only text runs");
+                let inline_formatting_context = inline_formatting_context_builder.finish(
+                    builder.context,
+                    true,  /* has_first_formatted_line */
+                    false, /* is_single_line_text_box */
+                    builder.info.style.to_bidi_level(),
+                );
 
                 let block_formatting_context = BlockFormattingContext::from_block_container(
                     BlockContainer::InlineFormattingContext(inline_formatting_context),

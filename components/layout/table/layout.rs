@@ -95,10 +95,14 @@ impl CellLayout {
 
     /// Whether the cell is considered empty for the purpose of the 'empty-cells' property.
     fn is_empty_for_empty_cells(&self) -> bool {
-        self.layout
-            .fragments
-            .iter()
-            .all(|fragment| matches!(fragment, Fragment::AbsoluteOrFixedPositionedPlaceholder(_)))
+        self.layout.fragments.iter().all(|fragment| match fragment {
+            Fragment::AbsoluteOrFixedPositionedPlaceholder(_) => true,
+            Fragment::Positioning(fragment) => fragment
+                .children
+                .iter()
+                .all(|child| matches!(child, Fragment::AbsoluteOrFixedPositionedPlaceholder(_))),
+            _ => false,
+        })
     }
 }
 
