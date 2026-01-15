@@ -20,6 +20,7 @@ use smallvec::SmallVec;
 use style::context::SharedStyleContext;
 use style::properties::ComputedValues;
 use style::selector_parser::{PseudoElement, RestyleDamage};
+use style::values::specified::PositionProperty;
 
 use crate::cell::{ArcRefCell, WeakRefCell};
 use crate::flexbox::FlexLevelBox;
@@ -29,6 +30,7 @@ use crate::fragment_tree::Fragment;
 use crate::geom::PhysicalSize;
 use crate::layout_box_base::LayoutBoxBase;
 use crate::replaced::CanvasInfo;
+use crate::style_ext::ComputedValuesExt;
 use crate::table::{TableLevelBox, WeakTableLevelBox};
 use crate::taffy::TaffyItemBox;
 
@@ -220,6 +222,38 @@ impl LayoutBox {
                 WeakLayoutBox::TaffyItemBox(taffy_item_box.downgrade())
             },
         }
+    }
+
+    /// For absolutely positioned boxes, this returns the containing block.
+    /// In other cases, it returns the parent box.
+    #[expect(unused)]
+    fn container(&self) -> Option<LayoutBox> {
+        self.with_base(|base| {
+            let filter = match base.style.get_box().position {
+                PositionProperty::Absolute => {
+                    ComputedValuesExt::establishes_containing_block_for_absolute_descendants
+                },
+                PositionProperty::Fixed => {
+                    ComputedValuesExt::establishes_containing_block_for_all_descendants
+                },
+                _ => return base.parent_box(),
+            };
+            let mut ancestor = base.parent_box();
+            while let Some(ref ancestor_ref) = ancestor {
+                let Some(next_ancestor) = ancestor_ref.with_base(|base| {
+                    if filter(&*base.style, base.base_fragment_info.flags) {
+                        None
+                    } else {
+                        Some(base.parent_box())
+                    }
+                })?
+                else {
+                    return ancestor;
+                };
+                ancestor = next_ancestor;
+            }
+            None
+        })?
     }
 }
 
