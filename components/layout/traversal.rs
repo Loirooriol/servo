@@ -119,12 +119,13 @@ pub(crate) fn compute_damage_and_repair_style_inner(
 
     {
         let mut element_data = element_data.borrow_mut();
-        original_element_damage = element_data.damage;
+        let damage =
+            std::mem::take(&mut element_data.damage).unwrap_or_else(RestyleDamage::reconstruct);
+        original_element_damage = LayoutDamage::from_bits_retain(damage.bits());
         element_damage = original_element_damage | damage_from_parent;
 
         if let Some(ref style) = element_data.styles.primary {
             if style.get_box().display == Display::None {
-                element_data.damage = element_damage;
                 return element_damage;
             }
         }
@@ -147,9 +148,9 @@ pub(crate) fn compute_damage_and_repair_style_inner(
 
     // If one of our children needed to be reconstructed, we need to recollect children
     // during box tree construction.
-    if damage_from_children.contains(LayoutDamage::recollect_box_tree_children()) {
+    /*if damage_from_children.contains(LayoutDamage::recollect_box_tree_children()) {
         element_damage.insert(LayoutDamage::recollect_box_tree_children());
-    }
+    }*/
 
     // If this node's box will not be preserved, we need to relayout its box tree.
     let element_layout_damage = LayoutDamage::from(element_damage);

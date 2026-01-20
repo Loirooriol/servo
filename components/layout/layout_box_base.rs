@@ -7,6 +7,7 @@ use std::sync::atomic::AtomicBool;
 
 use app_units::Au;
 use atomic_refcell::AtomicRefCell;
+use layout_api::LayoutDamage;
 use malloc_size_of_derive::MallocSizeOf;
 use servo_arc::Arc;
 use style::properties::ComputedValues;
@@ -35,6 +36,7 @@ pub(crate) struct LayoutBoxBase {
     pub cached_layout_result: AtomicRefCell<Option<Box<CacheableLayoutResultAndInputs>>>,
     pub fragments: AtomicRefCell<Vec<Fragment>>,
     pub parent_box: Option<WeakLayoutBox>,
+    pub damage: LayoutDamage,
 }
 
 impl LayoutBoxBase {
@@ -47,6 +49,7 @@ impl LayoutBoxBase {
             cached_layout_result: AtomicRefCell::default(),
             fragments: AtomicRefCell::default(),
             parent_box: None,
+            damage: LayoutDamage::empty(),
         }
     }
 

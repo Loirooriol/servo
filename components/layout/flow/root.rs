@@ -161,11 +161,7 @@ fn construct_for_root_element(
     context: &LayoutContext,
     root_element: ServoThreadSafeLayoutNode<'_>,
 ) -> Vec<ArcRefCell<BlockLevelBox>> {
-    let info = NodeAndStyleInfo::new(
-        root_element,
-        root_element.style(&context.style_context),
-        root_element.take_restyle_damage(),
-    );
+    let info = NodeAndStyleInfo::new(root_element, root_element.style(&context.style_context));
     let box_style = info.style.get_box();
 
     let display_inside = match Display::from(box_style.display) {
@@ -411,8 +407,7 @@ impl<'dom> IncrementalBoxTreeUpdate<'dom> {
         let node = self.node.to_threadsafe();
         let contents = Contents::for_element(node, context);
 
-        let info =
-            NodeAndStyleInfo::new(node, self.primary_style.clone(), node.take_restyle_damage());
+        let info = NodeAndStyleInfo::new(node, self.primary_style.clone());
 
         let out_of_flow_absolutely_positioned_box =
             AbsolutelyPositionedBox::construct(context, &info, self.display_inside, contents);

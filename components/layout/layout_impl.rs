@@ -1144,8 +1144,7 @@ impl LayoutThread {
 
         let mut box_tree = self.box_tree.borrow_mut();
         let box_tree = &mut *box_tree;
-        let layout_damage: LayoutDamage = damage.into();
-        if box_tree.is_none() || layout_damage.has_box_damage() {
+        if box_tree.is_none() || LayoutDamage::from(damage).has_box_damage() {
             let mut build_box_tree = || {
                 if !BoxTree::update(recalc_style_traversal.context(), dirty_root) {
                     *box_tree = Some(Arc::new(BoxTree::construct(

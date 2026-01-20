@@ -5,6 +5,8 @@
 use bitflags::bitflags;
 use style::selector_parser::RestyleDamage;
 
+use crate::malloc_size_of_is_0;
+
 bitflags! {
     /// Individual layout actions that may be necessary after restyling. This is an extension
     /// of `RestyleDamage` from stylo, which only uses the 4 lower bits.
@@ -20,6 +22,8 @@ bitflags! {
         const REBUILD_BOX = 0b1111_1111_1111 << 4;
     }
 }
+
+malloc_size_of_is_0!(LayoutDamage);
 
 impl LayoutDamage {
     pub fn recollect_box_tree_children() -> RestyleDamage {

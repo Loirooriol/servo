@@ -137,7 +137,7 @@ impl LayoutBox {
     }
 
     pub(crate) fn with_base_mut<T>(
-        &mut self,
+        &self,
         callback: impl FnOnce(&mut LayoutBoxBase) -> T,
     ) -> Option<T> {
         Some(match self {
@@ -321,11 +321,25 @@ impl BoxSlot<'_> {
         *self.slot.borrow_mut() = Some(layout_box);
     }
 
-    pub(crate) fn take_layout_box_if_undamaged(&self, damage: LayoutDamage) -> Option<LayoutBox> {
-        if damage.has_box_damage() {
+    pub(crate) fn take_layout_box_if_undamaged(&self) -> Option<LayoutBox> {
+        if self
+            .with_base(|base| base.damage.has_box_damage())
+            .unwrap_or(true)
+        {
             return None;
         }
         self.slot.borrow_mut().take()
+    }
+
+    pub(crate) fn with_base<T>(&self, callback: impl FnOnce(&LayoutBoxBase) -> T) -> Option<T> {
+        self.slot.borrow().as_ref()?.with_base(callback)
+    }
+
+    pub(crate) fn with_base_mut<T>(
+        &self,
+        callback: impl FnOnce(&mut LayoutBoxBase) -> T,
+    ) -> Option<T> {
+        self.slot.borrow().as_ref()?.with_base_mut(callback)
     }
 }
 

@@ -444,7 +444,7 @@ impl<'dom> BlockContainerBuilder<'dom, '_> {
         contents: Contents,
         box_slot: BoxSlot<'dom>,
     ) {
-        let old_layout_box = box_slot.take_layout_box_if_undamaged(info.damage);
+        let old_layout_box = box_slot.take_layout_box_if_undamaged();
         let (is_list_item, non_replaced_contents) = match (display_inside, contents) {
             (
                 DisplayInside::Flow { is_list_item },
@@ -590,7 +590,7 @@ impl<'dom> BlockContainerBuilder<'dom, '_> {
                     contents,
                 ))
             };
-            let old_layout_box = box_slot.take_layout_box_if_undamaged(info.damage);
+            let old_layout_box = box_slot.take_layout_box_if_undamaged();
             let inline_level_box =
                 inline_builder.push_absolutely_positioned_box(constructor, old_layout_box);
             box_slot.set(LayoutBox::InlineLevel(inline_level_box));
@@ -627,7 +627,7 @@ impl<'dom> BlockContainerBuilder<'dom, '_> {
                         self.propagated_data,
                     ))
                 };
-                let old_layout_box = box_slot.take_layout_box_if_undamaged(info.damage);
+                let old_layout_box = box_slot.take_layout_box_if_undamaged();
                 let inline_level_box = builder.push_float_box(constructor, old_layout_box);
                 box_slot.set(LayoutBox::InlineLevel(inline_level_box));
                 return;
@@ -682,13 +682,12 @@ impl BlockLevelJob<'_> {
 
         // If this `BlockLevelBox` is undamaged and it has been laid out before, reuse
         // the old one, while being sure to clear the layout cache.
-        if !info.damage.has_box_damage() {
-            if let Some(block_level_box) = match &*self.box_slot.slot.borrow() {
-                Some(LayoutBox::BlockLevel(block_level_box)) => Some(block_level_box.clone()),
-                _ => None,
-            } {
-                return block_level_box;
-            }
+        if let Some(LayoutBox::BlockLevel(block_level_box)) =
+            self.box_slot.take_layout_box_if_undamaged()
+        {
+            self.box_slot
+                .set(LayoutBox::BlockLevel(block_level_box.clone()));
+            return block_level_box;
         }
 
         let block_level_box = match self.kind {
