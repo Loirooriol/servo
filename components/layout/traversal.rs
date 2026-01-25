@@ -2,9 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::cell::Cell;
-use std::sync::atomic::Ordering;
-
 use bitflags::Flags;
 use layout_api::LayoutDamage;
 use layout_api::wrapper_traits::{LayoutNode, ThreadSafeLayoutNode};
@@ -100,14 +97,6 @@ where
 pub(crate) fn compute_damage_and_repair_style(
     context: &SharedStyleContext,
     node: ServoThreadSafeLayoutNode<'_>,
-    damage_from_environment: RestyleDamage,
-) -> RestyleDamage {
-    compute_damage_and_repair_style_inner(context, node, damage_from_environment)
-}
-
-pub(crate) fn compute_damage_and_repair_style_inner(
-    context: &SharedStyleContext,
-    node: ServoThreadSafeLayoutNode<'_>,
     damage_from_parent: RestyleDamage,
 ) -> RestyleDamage {
     let mut element_damage;
@@ -119,16 +108,16 @@ pub(crate) fn compute_damage_and_repair_style_inner(
 
     {
         let mut element_data = element_data.borrow_mut();
-        let damage =
-            std::mem::take(&mut element_data.damage).unwrap_or_else(RestyleDamage::reconstruct);
-        original_element_damage = LayoutDamage::from_bits_retain(damage.bits());
-        element_damage = original_element_damage | damage_from_parent;
+        let damage = std::mem::take(&mut element_data.damage);
+        element_damage = damage | damage_from_parent;
 
         if let Some(ref style) = element_data.styles.primary {
             if style.get_box().display == Display::None {
                 return element_damage;
             }
         }
+
+        original_element_damage = LayoutDamage::from_bits_retain(damage.bits());
     }
 
     // If we are reconstructing this node, then all of the children should be reconstructed as well.
@@ -142,7 +131,7 @@ pub(crate) fn compute_damage_and_repair_style_inner(
     for child in node.children() {
         if child.is_element() {
             damage_from_children |=
-                compute_damage_and_repair_style_inner(context, child, damage_for_children);
+                compute_damage_and_repair_style(context, child, damage_for_children);
         }
     }
 
@@ -167,49 +156,20 @@ pub(crate) fn compute_damage_and_repair_style_inner(
     //
     // TODO: If this node has `recollect_box_tree_children` damage, this is unnecessary
     // unless it's entirely above the dirty root.
+    let mut element_layout_damage = element_damage.into();
     if element_damage != RestyleDamage::reconstruct() &&
         damage_for_parent.contains(RestyleDamage::RELAYOUT)
     {
-        let outer_inline_content_sizes_depend_on_content = Cell::new(false);
-        node.with_layout_box_base_including_pseudos(|base| {
-            base.clear_fragments();
-            if original_element_damage.contains(RestyleDamage::RELAYOUT) {
-                // If the node itself has damage, we must clear both the cached layout results
-                // and also the cached intrinsic inline sizes.
-                *base.cached_layout_result.borrow_mut() = None;
-                *base.cached_inline_content_size.borrow_mut() = None;
-            } else if damage_from_children.contains(RestyleDamage::RELAYOUT) {
-                // If the damage is propagated from children, then we still need to clear the cached
-                // layout results, but sometimes we can keep the cached intrinsic inline sizes.
-                *base.cached_layout_result.borrow_mut() = None;
-                if !damage_from_children.contains(LayoutDamage::recompute_inline_content_sizes()) {
-                    // This happens when there is a node which is a descendant of the current one and
-                    // an ancestor of the damaged one, whose inline size doesn't depend on its contents.
-                    return;
-                }
-                *base.cached_inline_content_size.borrow_mut() = None;
+        if let Some(inner_layout_data) = node.inner_layout_data() {
+            inner_layout_data.with_each_pseudo_layout_box_base_mut(|base| {
+                base.add_damage(element_layout_damage);
+            });
+            if let Some(self_box) = &*inner_layout_data.self_box.borrow() {
+                self_box.with_base_mut(|base| {
+                    base.add_damage(element_layout_damage);
+                    element_layout_damage = base.damage;
+                });
             }
-
-            // When a block container has a mix of inline-level and block-level contents,
-            // the inline-level ones are wrapped inside an anonymous block associated with
-            // the block container. The anonymous block has an `auto` size, so its intrinsic
-            // contribution depends on content, but it can't affect the intrinsic size of
-            // ancestors if the block container is sized extrinsically.
-            if !base.base_fragment_info.is_anonymous() {
-                // TODO: Use `Cell::update()` once it becomes stable.
-                outer_inline_content_sizes_depend_on_content.set(
-                    outer_inline_content_sizes_depend_on_content.get() ||
-                        base.outer_inline_content_sizes_depend_on_content
-                            .load(Ordering::Relaxed),
-                );
-            }
-        });
-
-        // If the intrinsic contributions of this node depend on content, we will need to clear
-        // the cached intrinsic sizes of the parent. But if the contributions are purely extrinsic,
-        // then the intrinsic sizes of the ancestors won't be affected, and we can keep the cache.
-        if outer_inline_content_sizes_depend_on_content.get() {
-            damage_for_parent.insert(LayoutDamage::recompute_inline_content_sizes())
         }
     }
 
@@ -220,13 +180,6 @@ pub(crate) fn compute_damage_and_repair_style_inner(
         if !original_element_damage.is_empty() {
             node.repair_style(context);
         }
-
-        element_damage = RestyleDamage::empty();
     }
-
-    if element_damage != original_element_damage {
-        element_data.borrow_mut().damage = element_damage;
-    }
-
-    damage_for_parent
+    element_damage
 }
