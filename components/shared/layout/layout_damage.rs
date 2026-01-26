@@ -27,6 +27,10 @@ bitflags! {
 malloc_size_of_is_0!(LayoutDamage);
 
 impl LayoutDamage {
+    pub fn rebuild_fragment() -> RestyleDamage {
+        RestyleDamage::from_bits_retain(LayoutDamage::REBUILD_FRAGMENT.bits())
+    }
+
     pub fn recollect_box_tree_children() -> RestyleDamage {
         RestyleDamage::from_bits_retain(LayoutDamage::RECOLLECT_BOX_TREE_CHILDREN.bits())
     }

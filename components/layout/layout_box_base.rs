@@ -164,10 +164,13 @@ impl LayoutBoxBase {
             // then the intrinsic sizes of the ancestors won't be affected, and we can keep the cache.
             damage_for_parent.remove(LayoutDamage::RECOMPUTE_INLINE_CONTENT_SIZES)
         }
-        if let Some(container) = self.container() {
-            container.with_base_mut(|base| {
-                base.add_damage(damage_for_parent)
-            });
+        // If we have to rebuild the box, the damage propagation is taken care of in the traversal.
+        if !self.damage.contains(LayoutDamage::REBUILD_BOX) {
+            if let Some(container) = self.container() {
+                container.with_base_mut(|base| {
+                    base.add_damage(damage_for_parent)
+                });
+            }
         }
     }
 }

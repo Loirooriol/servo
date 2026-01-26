@@ -99,8 +99,8 @@ pub(crate) fn compute_damage_and_repair_style(
     node: ServoThreadSafeLayoutNode<'_>,
     damage_from_parent: RestyleDamage,
 ) -> RestyleDamage {
-    let mut element_damage;
-    let original_element_damage;
+    let mut element_damage; // RestyleDamage, element + parent
+    let original_element_damage; // LayoutDamage, just element
     let element_data = &node
         .style_data()
         .expect("Should not run `compute_damage` before styling.")
@@ -117,6 +117,7 @@ pub(crate) fn compute_damage_and_repair_style(
             }
         }
 
+        // Do we need this?
         original_element_damage = LayoutDamage::from_bits_retain(damage.bits());
     }
 
@@ -137,25 +138,14 @@ pub(crate) fn compute_damage_and_repair_style(
 
     // If one of our children needed to be reconstructed, we need to recollect children
     // during box tree construction.
-    /*if damage_from_children.contains(LayoutDamage::recollect_box_tree_children()) {
-        element_damage.insert(LayoutDamage::recollect_box_tree_children());
-    }*/
-
-    // If this node's box will not be preserved, we need to relayout its box tree.
-    let element_layout_damage = LayoutDamage::from(element_damage);
-    if element_layout_damage.has_box_damage() {
-        element_damage.insert(RestyleDamage::RELAYOUT);
+    if damage_from_children.contains(LayoutDamage::rebuild_box_tree()) {
+        element_damage.insert(LayoutDamage::recollect_box_tree_children() | RestyleDamage::RELAYOUT);
     }
 
     // Only propagate up layout phases from children, as other types of damage are
     // incorporated into `element_damage` above.
     let mut damage_for_parent = element_damage | (damage_from_children & RestyleDamage::RELAYOUT);
 
-    // If we are going to potentially reuse this box tree node, then clear any cached
-    // fragment layout.
-    //
-    // TODO: If this node has `recollect_box_tree_children` damage, this is unnecessary
-    // unless it's entirely above the dirty root.
     let mut element_layout_damage = element_damage.into();
     if element_damage != RestyleDamage::reconstruct() &&
         damage_for_parent.contains(RestyleDamage::RELAYOUT)
