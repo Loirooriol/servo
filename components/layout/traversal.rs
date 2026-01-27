@@ -128,28 +128,22 @@ pub(crate) fn compute_damage_and_repair_style(
         damage_for_children.truncate();
     }
 
-    let mut damage_from_children = RestyleDamage::empty();
     for child in node.children() {
         if child.is_element() {
-            damage_from_children |=
+            element_damage |=
                 compute_damage_and_repair_style(context, child, damage_for_children);
         }
     }
 
     // If one of our children needed to be reconstructed, we need to recollect children
     // during box tree construction.
-    if damage_from_children.contains(LayoutDamage::rebuild_box_tree()) {
-        element_damage.insert(LayoutDamage::recollect_box_tree_children() | RestyleDamage::RELAYOUT);
+    let recompute_inline_sizes = RestyleDamage::from_bits_retain(LayoutDamage::RECOMPUTE_INLINE_CONTENT_SIZES.bits());
+    if element_damage.contains(LayoutDamage::rebuild_box_tree()) {
+        node.unset_all_pseudo_boxes();
+        return LayoutDamage::recollect_box_tree_children() | recompute_inline_sizes | RestyleDamage::RELAYOUT;
     }
-
-    // Only propagate up layout phases from children, as other types of damage are
-    // incorporated into `element_damage` above.
-    let mut damage_for_parent = element_damage | (damage_from_children & RestyleDamage::RELAYOUT);
-
     let mut element_layout_damage = element_damage.into();
-    if element_damage != RestyleDamage::reconstruct() &&
-        damage_for_parent.contains(RestyleDamage::RELAYOUT)
-    {
+    if element_damage.contains(RestyleDamage::RELAYOUT) {
         if let Some(inner_layout_data) = node.inner_layout_data() {
             inner_layout_data.with_each_pseudo_layout_box_base_mut(|base| {
                 base.add_damage(element_layout_damage);
@@ -157,19 +151,24 @@ pub(crate) fn compute_damage_and_repair_style(
             if let Some(self_box) = &*inner_layout_data.self_box.borrow() {
                 self_box.with_base_mut(|base| {
                     base.add_damage(element_layout_damage);
-                    element_layout_damage = base.damage;
+                    element_layout_damage |= base.damage;
                 });
             }
         }
     }
+    if element_layout_damage.has_box_damage() {
+        node.unset_all_pseudo_boxes();
+    }
+
+    // Only propagate up layout phases from children, as other types of damage are
+    // incorporated into `element_damage` above.
+
 
     // If the box will be preserved, update the box's style and also in any fragments
     // that haven't been cleared. Meanwhile, clear the damage to avoid affecting the
     // next reflow.
-    if !element_layout_damage.has_box_damage() {
-        if !original_element_damage.is_empty() {
-            node.repair_style(context);
-        }
+    if !element_layout_damage.has_box_damage() && !original_element_damage.is_empty() {
+        node.repair_style(context);
     }
-    element_damage
+    element_damage & RestyleDamage::RELAYOUT
 }

@@ -112,7 +112,6 @@ impl LayoutBoxBase {
 
     /// For absolutely positioned boxes, this returns the containing block.
     /// In other cases, it returns the parent box.
-    #[expect(unused)]
     fn container(&self) -> Option<LayoutBox> {
         let filter = match self.style.get_box().position {
             PositionProperty::Absolute => {
@@ -141,6 +140,7 @@ impl LayoutBoxBase {
     }
 
     pub(crate) fn add_damage(&mut self, damage: LayoutDamage) {
+        let damage = damage & LayoutDamage::REBUILD_BOX;
         if self.damage.contains(damage) {
             return;
         }
@@ -158,12 +158,14 @@ impl LayoutBoxBase {
         // the block container. The anonymous block has an `auto` size, so its intrinsic
         // contribution depends on content, but it can't affect the intrinsic size of
         // ancestors if the block container is sized extrinsically.
-        if self.base_fragment_info.is_anonymous() || !self.outer_inline_content_sizes_depend_on_content.load(Ordering::Relaxed) {
-            // If the intrinsic contributions of this node depend on content, we will need to clear
-            // the cached intrinsic sizes of the parent. But if the contributions are purely extrinsic,
-            // then the intrinsic sizes of the ancestors won't be affected, and we can keep the cache.
-            damage_for_parent.remove(LayoutDamage::RECOMPUTE_INLINE_CONTENT_SIZES)
-        }
+        
+        // If the intrinsic contributions of this node depend on content, we will need to clear
+        // the cached intrinsic sizes of the parent. But if the contributions are purely extrinsic,
+        // then the intrinsic sizes of the ancestors won't be affected, and we can keep the cache.
+        damage_for_parent.set(
+            LayoutDamage::RECOMPUTE_INLINE_CONTENT_SIZES,
+            !self.base_fragment_info.is_anonymous() && self.outer_inline_content_sizes_depend_on_content.load(Ordering::Relaxed)
+        );
         // If we have to rebuild the box, the damage propagation is taken care of in the traversal.
         if !self.damage.contains(LayoutDamage::REBUILD_BOX) {
             if let Some(container) = self.container() {

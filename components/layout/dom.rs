@@ -94,25 +94,9 @@ impl InnerDOMLayoutData {
         }
     }
 
-    fn with_layout_box_base(&self, callback: impl Fn(&LayoutBoxBase)) {
-        if let Some(data) = self.self_box.borrow().as_ref() {
-            data.with_base(callback);
-        }
-    }
-
     fn with_layout_box_base_mut(&self, callback: impl Fn(&mut LayoutBoxBase)) {
         if let Some(data) = self.self_box.borrow().as_ref() {
             data.with_base_mut(callback);
-        }
-    }
-
-    fn with_layout_box_base_including_pseudos(&self, callback: impl Fn(&LayoutBoxBase)) {
-        self.with_layout_box_base(&callback);
-        for pseudo_layout_data in self.pseudo_boxes.iter() {
-            pseudo_layout_data
-                .data
-                .borrow()
-                .with_layout_box_base_including_pseudos(&callback);
         }
     }
 
@@ -314,13 +298,6 @@ impl BoxSlot<'_> {
     pub(crate) fn with_base<T>(&self, callback: impl FnOnce(&LayoutBoxBase) -> T) -> Option<T> {
         self.slot.borrow().as_ref()?.with_base(callback)
     }
-
-    pub(crate) fn with_base_mut<T>(
-        &self,
-        callback: impl FnOnce(&mut LayoutBoxBase) -> T,
-    ) -> Option<T> {
-        self.slot.borrow().as_ref()?.with_base_mut(callback)
-    }
 }
 
 impl Drop for BoxSlot<'_> {
@@ -352,7 +329,6 @@ pub(crate) trait NodeExt<'dom> {
     fn unset_all_pseudo_boxes(&self);
 
     fn fragments_for_pseudo(&self, pseudo_element: Option<PseudoElement>) -> Vec<Fragment>;
-    fn with_layout_box_base_including_pseudos(&self, callback: impl Fn(&LayoutBoxBase));
 
     fn repair_style(&self, context: &SharedStyleContext);
     fn take_restyle_damage(&self) -> LayoutDamage;
@@ -492,12 +468,6 @@ impl<'dom> NodeExt<'dom> for ServoThreadSafeLayoutNode<'dom> {
 
     fn unset_all_pseudo_boxes(&self) {
         self.ensure_inner_layout_data().pseudo_boxes.clear();
-    }
-
-    fn with_layout_box_base_including_pseudos(&self, callback: impl Fn(&LayoutBoxBase)) {
-        if let Some(inner_layout_data) = self.inner_layout_data() {
-            inner_layout_data.with_layout_box_base_including_pseudos(callback);
-        }
     }
 
     fn fragments_for_pseudo(&self, pseudo_element: Option<PseudoElement>) -> Vec<Fragment> {
