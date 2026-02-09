@@ -1144,7 +1144,12 @@ impl LayoutThread {
 
         let mut box_tree = self.box_tree.borrow_mut();
         let box_tree = &mut *box_tree;
-        if box_tree.is_none() || LayoutDamage::from(damage).has_box_damage() {
+        use crate::dom::NodeExt;
+        if box_tree.is_none() || root_node.to_threadsafe().inner_layout_data().as_ref().is_none_or(|inner_layout_data| {
+            inner_layout_data.self_box.borrow().as_ref().is_none_or(|self_box| self_box.with_base(|base| {
+                base.damage.has_box_damage()
+            }).unwrap_or(true))
+        }) {
             let mut build_box_tree = || {
                 if !BoxTree::update(recalc_style_traversal.context(), dirty_root) {
                     *box_tree = Some(Arc::new(BoxTree::construct(

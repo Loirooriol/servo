@@ -139,7 +139,7 @@ pub(crate) fn compute_damage_and_repair_style(
     // during box tree construction.
     let recompute_inline_sizes = RestyleDamage::from_bits_retain(LayoutDamage::RECOMPUTE_INLINE_CONTENT_SIZES.bits());
     if element_damage.contains(LayoutDamage::rebuild_box_tree()) {
-        node.unset_all_pseudo_boxes();
+        node.unset_all_boxes();
         return LayoutDamage::recollect_box_tree_children() | recompute_inline_sizes | RestyleDamage::RELAYOUT;
     }
     let mut element_layout_damage = element_damage.into();
