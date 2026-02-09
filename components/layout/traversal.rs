@@ -97,7 +97,6 @@ where
 pub(crate) fn compute_damage_and_repair_style(
     context: &SharedStyleContext,
     node: ServoThreadSafeLayoutNode<'_>,
-    damage_from_parent: RestyleDamage,
 ) -> RestyleDamage {
     let mut element_damage; // RestyleDamage, element + parent
     let original_element_damage; // LayoutDamage, just element
@@ -108,8 +107,7 @@ pub(crate) fn compute_damage_and_repair_style(
 
     {
         let mut element_data = element_data.borrow_mut();
-        let damage = std::mem::take(&mut element_data.damage);
-        element_damage = damage | damage_from_parent;
+        element_damage = std::mem::take(&mut element_data.damage);
 
         if let Some(ref style) = element_data.styles.primary {
             if style.get_box().display == Display::None {
@@ -123,24 +121,27 @@ pub(crate) fn compute_damage_and_repair_style(
 
     // If we are reconstructing this node, then all of the children should be reconstructed as well.
     // Otherwise, do not propagate down its box damage.
-    let mut damage_for_children = element_damage;
-    if !element_damage.contains(LayoutDamage::rebuild_box_tree()) {
-        damage_for_children.truncate();
+    if element_damage.contains(LayoutDamage::rebuild_box_tree()) || node.inner_layout_data().is_none_or(|inner_layout_data| inner_layout_data.self_box.borrow().is_none()) {
+        node.clear_box_subtree();
     }
 
     for child in node.children() {
         if child.is_element() {
             element_damage |=
-                compute_damage_and_repair_style(context, child, damage_for_children);
+                compute_damage_and_repair_style(context, child);
         }
     }
 
     // If one of our children needed to be reconstructed, we need to recollect children
     // during box tree construction.
     let recompute_inline_sizes = RestyleDamage::from_bits_retain(LayoutDamage::RECOMPUTE_INLINE_CONTENT_SIZES.bits());
-    if element_damage.contains(LayoutDamage::rebuild_box_tree()) {
-        node.unset_all_boxes();
-        return LayoutDamage::recollect_box_tree_children() | recompute_inline_sizes | RestyleDamage::RELAYOUT;
+    println!("element_damage {:?} on {:?}", element_damage, node);
+    if let Some(inner_layout_data) = node.inner_layout_data() {
+        if let Some(self_box) = &*inner_layout_data.self_box.borrow() {
+            self_box.with_base_mut(|base| {
+                println!("base damage {:?} on {:?}", base.damage, node);
+            });
+        }
     }
     let mut element_layout_damage = element_damage.into();
     if element_damage.contains(RestyleDamage::RELAYOUT) {

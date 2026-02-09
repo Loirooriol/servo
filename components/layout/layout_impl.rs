@@ -1125,8 +1125,7 @@ impl LayoutThread {
         let damage = compute_damage_and_repair_style(
             &layout_context.style_context,
             root_node.to_threadsafe(),
-            damage_from_environment,
-        );
+        ) | damage_from_environment;
         if damage.contains(RestyleDamage::RECALCULATE_OVERFLOW) {
             self.need_overflow_calculation.set(true);
         }

@@ -166,14 +166,19 @@ impl LayoutBoxBase {
             LayoutDamage::RECOMPUTE_INLINE_CONTENT_SIZES,
             !self.base_fragment_info.is_anonymous() && self.outer_inline_content_sizes_depend_on_content.load(Ordering::Relaxed)
         );
-        // If we have to rebuild the box, the damage propagation is taken care of in the traversal.
-        if !self.damage.contains(LayoutDamage::REBUILD_BOX) {
+        let parent_or_container = if self.damage.contains(LayoutDamage::REBUILD_BOX) {
+            if let Some(container) = self.parent_box() {
+                container.with_base_mut(|base| {
+                    base.add_damage(LayoutDamage::RECOMPUTE_INLINE_CONTENT_SIZES | LayoutDamage::RECOLLECT_BOX_TREE_CHILDREN | LayoutDamage::REBUILD_FRAGMENT)
+                });
+            }
+        } else {
             if let Some(container) = self.container() {
                 container.with_base_mut(|base| {
                     base.add_damage(damage_for_parent)
                 });
             }
-        }
+        };
     }
 }
 
