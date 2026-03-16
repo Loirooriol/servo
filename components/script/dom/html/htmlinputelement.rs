@@ -20,7 +20,6 @@ use embedder_traits::{
 use encoding_rs::Encoding;
 use fonts::{ByteIndex, TextByteRange};
 use html5ever::{LocalName, Prefix, QualName, local_name, ns};
-use itertools::Itertools;
 use js::context::JSContext;
 use js::jsapi::{
     ClippedTime, DateGetMsecSinceEpoch, Handle, JS_ClearPendingException, JSObject, NewDateObject,
@@ -82,6 +81,28 @@ use crate::dom::html::htmlformelement::{
     FormControl, FormDatum, FormDatumValue, FormSubmitterElement, HTMLFormElement, ResetFrom,
     SubmittedFrom,
 };
+use crate::dom::inputtype::buttoninputtype::ButtonInputType;
+use crate::dom::inputtype::checkboxinputtype::CheckboxInputType;
+use crate::dom::inputtype::colorinputtype::ColorInputType;
+use crate::dom::inputtype::dateinputtype::DateInputType;
+use crate::dom::inputtype::datetimelocalinputtype::DatetimeLocalInputType;
+use crate::dom::inputtype::emailinputtype::EmailInputType;
+use crate::dom::inputtype::fileinputtype::FileInputType;
+use crate::dom::inputtype::hiddeninputtype::HiddenInputType;
+use crate::dom::inputtype::imageinputtype::ImageInputType;
+use crate::dom::inputtype::monthinputtype::MonthInputType;
+use crate::dom::inputtype::numberinputtype::NumberInputType;
+use crate::dom::inputtype::passwordinputtype::PasswordInputType;
+use crate::dom::inputtype::radioinputtype::RadioInputType;
+use crate::dom::inputtype::rangeinputtype::RangeInputType;
+use crate::dom::inputtype::resetinputtype::ResetInputType;
+use crate::dom::inputtype::searchinputtype::SearchInputType;
+use crate::dom::inputtype::submitinputtype::SubmitInputType;
+use crate::dom::inputtype::telinputtype::TelInputType;
+use crate::dom::inputtype::textinputtype::TextInputType;
+use crate::dom::inputtype::timeinputtype::TimeInputType;
+use crate::dom::inputtype::urlinputtype::UrlInputType;
+use crate::dom::inputtype::weekinputtype::WeekInputType;
 use crate::dom::keyboardevent::KeyboardEvent;
 use crate::dom::node::{
     BindContext, CloneChildrenFlag, Node, NodeDamage, NodeTraits, ShadowIncluding, UnbindContext,
@@ -485,6 +506,33 @@ pub(crate) enum InputType {
 }
 
 impl InputType {
+    fn as_specific(&self) -> &dyn SpecificInputType {
+        match *self {
+            Self::Button => &ButtonInputType() as &dyn SpecificInputType,
+            Self::Checkbox => &CheckboxInputType() as &dyn SpecificInputType,
+            Self::Color => &ColorInputType() as &dyn SpecificInputType,
+            Self::Date => &DateInputType() as &dyn SpecificInputType,
+            Self::DatetimeLocal => &DatetimeLocalInputType() as &dyn SpecificInputType,
+            Self::Email => &EmailInputType() as &dyn SpecificInputType,
+            Self::File => &FileInputType() as &dyn SpecificInputType,
+            Self::Hidden => &HiddenInputType() as &dyn SpecificInputType,
+            Self::Image => &ImageInputType() as &dyn SpecificInputType,
+            Self::Month => &MonthInputType() as &dyn SpecificInputType,
+            Self::Number => &NumberInputType() as &dyn SpecificInputType,
+            Self::Password => &PasswordInputType() as &dyn SpecificInputType,
+            Self::Radio => &RadioInputType() as &dyn SpecificInputType,
+            Self::Range => &RangeInputType() as &dyn SpecificInputType,
+            Self::Reset => &ResetInputType() as &dyn SpecificInputType,
+            Self::Search => &SearchInputType() as &dyn SpecificInputType,
+            Self::Submit => &SubmitInputType() as &dyn SpecificInputType,
+            Self::Tel => &TelInputType() as &dyn SpecificInputType,
+            Self::Text => &TextInputType() as &dyn SpecificInputType,
+            Self::Time => &TimeInputType() as &dyn SpecificInputType,
+            Self::Url => &UrlInputType() as &dyn SpecificInputType,
+            Self::Week => &WeekInputType() as &dyn SpecificInputType,
+        }
+    }
+
     /// Defines which input type that should perform like a text input,
     /// specifically when it is interacting with JS. Note that Password
     /// is not included here since it is handled slightly differently,
@@ -596,6 +644,10 @@ impl From<&Atom> for InputType {
             _ => Self::default(),
         }
     }
+}
+
+pub(crate) trait SpecificInputType {
+    fn sanitize_value(&self, _input: &HTMLInputElement, _value: &mut DOMString) {}
 }
 
 #[derive(Debug, PartialEq)]
@@ -864,7 +916,7 @@ impl HTMLInputElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage#concept-input-step>
-    fn allowed_value_step(&self) -> Option<f64> {
+    pub(crate) fn allowed_value_step(&self) -> Option<f64> {
         // Step 1. If the attribute does not apply, then there is no allowed value step.
         // NOTE: The attribute applies iff there is a default step
         let default_step = self.default_step()?;
@@ -897,7 +949,7 @@ impl HTMLInputElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage#concept-input-min>
-    fn minimum(&self) -> Option<f64> {
+    pub(crate) fn minimum(&self) -> Option<f64> {
         self.upcast::<Element>()
             .get_attribute(&local_name!("min"))
             .and_then(|attribute| self.convert_string_to_number(&attribute.value()))
@@ -905,7 +957,7 @@ impl HTMLInputElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage#concept-input-max>
-    fn maximum(&self) -> Option<f64> {
+    pub(crate) fn maximum(&self) -> Option<f64> {
         self.upcast::<Element>()
             .get_attribute(&local_name!("max"))
             .and_then(|attribute| self.convert_string_to_number(&attribute.value()))
@@ -914,7 +966,7 @@ impl HTMLInputElement {
 
     /// when allowed_value_step and minimum both exist, this is the smallest
     /// value >= minimum that lies on an integer step
-    fn stepped_minimum(&self) -> Option<f64> {
+    pub(crate) fn stepped_minimum(&self) -> Option<f64> {
         match (self.minimum(), self.allowed_value_step()) {
             (Some(min), Some(allowed_step)) => {
                 let step_base = self.step_base();
@@ -929,7 +981,7 @@ impl HTMLInputElement {
 
     /// when allowed_value_step and maximum both exist, this is the smallest
     /// value <= maximum that lies on an integer step
-    fn stepped_maximum(&self) -> Option<f64> {
+    pub(crate) fn stepped_maximum(&self) -> Option<f64> {
         match (self.maximum(), self.allowed_value_step()) {
             (Some(max), Some(allowed_step)) => {
                 let step_base = self.step_base();
@@ -959,7 +1011,7 @@ impl HTMLInputElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage#concept-input-value-default-range>
-    fn default_range_value(&self) -> f64 {
+    pub(crate) fn default_range_value(&self) -> f64 {
         let min = self.minimum().unwrap_or(0.0);
         let max = self.maximum().unwrap_or(100.0);
         if max < min {
@@ -998,7 +1050,7 @@ impl HTMLInputElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage#concept-input-min-zero>
-    fn step_base(&self) -> f64 {
+    pub(crate) fn step_base(&self) -> f64 {
         // Step 1. If the element has a min content attribute, and the result of applying
         // the algorithm to convert a string to a number to the value of the min content attribute
         // is not an error, then return that result.
@@ -2437,139 +2489,7 @@ impl HTMLInputElement {
 
     /// <https://html.spec.whatwg.org/multipage/#value-sanitization-algorithm>
     fn sanitize_value(&self, value: &mut DOMString) {
-        match self.input_type() {
-            InputType::Text | InputType::Search | InputType::Tel | InputType::Password => {
-                value.strip_newlines();
-            },
-            InputType::Url => {
-                value.strip_newlines();
-                value.strip_leading_and_trailing_ascii_whitespace();
-            },
-            InputType::Date => {
-                if !value.str().is_valid_date_string() {
-                    value.clear();
-                }
-            },
-            InputType::Month => {
-                if !value.str().is_valid_month_string() {
-                    value.clear();
-                }
-            },
-            InputType::Week => {
-                if !value.str().is_valid_week_string() {
-                    value.clear();
-                }
-            },
-            InputType::Color => {
-                // > The value sanitization algorithm is as follows:
-                // > Run update a color well control color for the element.
-                self.update_a_color_well_control_color(value);
-            },
-            InputType::Time => {
-                if !value.str().is_valid_time_string() {
-                    value.clear();
-                }
-            },
-            InputType::DatetimeLocal => {
-                let time = value
-                    .str()
-                    .parse_local_date_time_string()
-                    .map(|date_time| date_time.to_local_date_time_string());
-                match time {
-                    Some(normalized_string) => *value = normalized_string.into(),
-                    None => value.clear(),
-                }
-            },
-            InputType::Number => {
-                if !value.is_valid_floating_point_number_string() {
-                    value.clear();
-                }
-                // Spec says that user agent "may" round the value
-                // when it's suffering a step mismatch, but WPT tests
-                // want it unrounded, and this matches other browser
-                // behavior (typing an unrounded number into an
-                // integer field box and pressing enter generally keeps
-                // the number intact but makes the input box :invalid)
-            },
-            // https://html.spec.whatwg.org/multipage/#range-state-(type=range):value-sanitization-algorithm
-            InputType::Range => {
-                if !value.is_valid_floating_point_number_string() {
-                    *value = DOMString::from(self.default_range_value().to_string());
-                }
-                if let Ok(fval) = &value.parse::<f64>() {
-                    let mut fval = *fval;
-                    // comparing max first, because if they contradict
-                    // the spec wants min to be the one that applies
-                    if let Some(max) = self.maximum() {
-                        if fval > max {
-                            fval = max;
-                        }
-                    }
-                    if let Some(min) = self.minimum() {
-                        if fval < min {
-                            fval = min;
-                        }
-                    }
-                    // https://html.spec.whatwg.org/multipage/#range-state-(type=range):suffering-from-a-step-mismatch
-                    // Spec does not describe this in a way that lends itself to
-                    // reproducible handling of floating-point rounding;
-                    // Servo may fail a WPT test because .1 * 6 == 6.000000000000001
-                    if let Some(allowed_value_step) = self.allowed_value_step() {
-                        let step_base = self.step_base();
-                        let steps_from_base = (fval - step_base) / allowed_value_step;
-                        if steps_from_base.fract() != 0.0 {
-                            // not an integer number of steps, there's a mismatch
-                            // round the number of steps...
-                            let int_steps = round_halves_positive(steps_from_base);
-                            // and snap the value to that rounded value...
-                            fval = int_steps * allowed_value_step + step_base;
-
-                            // but if after snapping we're now outside min..max
-                            // we have to adjust! (adjusting to min last because
-                            // that "wins" over max in the spec)
-                            if let Some(stepped_maximum) = self.stepped_maximum() {
-                                if fval > stepped_maximum {
-                                    fval = stepped_maximum;
-                                }
-                            }
-                            if let Some(stepped_minimum) = self.stepped_minimum() {
-                                if fval < stepped_minimum {
-                                    fval = stepped_minimum;
-                                }
-                            }
-                        }
-                    }
-                    *value = DOMString::from(fval.to_string());
-                };
-            },
-            InputType::Email => {
-                if !self.Multiple() {
-                    value.strip_newlines();
-                    value.strip_leading_and_trailing_ascii_whitespace();
-                } else {
-                    let sanitized = split_commas(&value.str())
-                        .map(|token| {
-                            let mut token = DOMString::from(token.to_string());
-                            token.strip_newlines();
-                            token.strip_leading_and_trailing_ascii_whitespace();
-                            token
-                        })
-                        .join(",");
-                    value.clear();
-                    value.push_str(sanitized.as_str());
-                }
-            },
-            // The following inputs don't have a value sanitization algorithm.
-            // See https://html.spec.whatwg.org/multipage/#value-sanitization-algorithm
-            InputType::Button |
-            InputType::Checkbox |
-            InputType::File |
-            InputType::Hidden |
-            InputType::Image |
-            InputType::Radio |
-            InputType::Reset |
-            InputType::Submit => (),
-        }
+        self.input_type().as_specific().sanitize_value(self, value);
     }
 
     #[cfg_attr(crown, expect(crown::unrooted_must_root))]
@@ -2578,7 +2498,7 @@ impl HTMLInputElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#update-a-color-well-control-color>
-    fn update_a_color_well_control_color(&self, element_value: &mut DOMString) {
+    pub(crate) fn update_a_color_well_control_color(&self, element_value: &mut DOMString) {
         // Step 1. Assert: element is an input element whose type attribute is in the Color state.
         debug_assert_eq!(self.input_type(), InputType::Color);
 
@@ -3761,17 +3681,6 @@ fn filter_from_accept(s: &DOMString) -> Vec<FilterPattern> {
     }
 
     filter
-}
-
-fn round_halves_positive(n: f64) -> f64 {
-    // WHATWG specs about input steps say to round to the nearest step,
-    // rounding halves always to positive infinity.
-    // This differs from Rust's .round() in the case of -X.5.
-    if n.fract() == -0.5 {
-        n.ceil()
-    } else {
-        n.round()
-    }
 }
 
 /// This is used to compile JS-compatible regex provided in pattern attribute
