@@ -36,6 +36,7 @@ use unicode_bidi::Level;
 use webrender_api as wr;
 use webrender_api::units::LayoutTransform;
 
+use crate::containing_block::{ContainingBlock, IndefiniteContainingBlock};
 use crate::dom_traversal::{Contents, NodeAndStyleInfo};
 use crate::fragment_tree::FragmentFlags;
 use crate::geom::{
@@ -44,7 +45,6 @@ use crate::geom::{
 };
 use crate::sizing::{Size, Sizes};
 use crate::table::TableLayoutStyle;
-use crate::{ContainingBlock, IndefiniteContainingBlock};
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum Display {
@@ -1172,18 +1172,7 @@ impl LayoutStyle<'_> {
         &self,
         containing_block: &IndefiniteContainingBlock,
     ) -> ContentBoxSizesAndPBM {
-        // <https://drafts.csswg.org/css-sizing-3/#cyclic-percentage-contribution>
-        // If max size properties or preferred size properties are set to a value containing
-        // indefinite percentages, we treat the entire value as the initial value of the property.
-        // However, for min size properties, as well as for margins and paddings,
-        // we instead resolve indefinite percentages against zero.
-        let containing_block_size_or_zero =
-            containing_block.size.map(|value| value.unwrap_or_default());
         let writing_mode = containing_block.style.writing_mode;
-        let pbm = self.padding_border_margin_with_writing_mode_and_containing_block_inline_size(
-            writing_mode,
-            containing_block_size_or_zero.inline,
-        );
         let style = self.style();
         let box_size = style.box_size(writing_mode);
         let min_size = style.min_box_size(writing_mode);
@@ -1209,13 +1198,29 @@ impl LayoutStyle<'_> {
             depends_on_block_constraints(&max_size.block) ||
             style.depends_on_block_constraints_due_to_relative_positioning(writing_mode);
 
-        let box_size = box_size.map_with(&containing_block.size, |size, basis| {
+        let containing_block_size = LogicalVec2 {
+            inline: containing_block.size.inline,
+            block: containing_block.size.block,
+        };
+        // <https://drafts.csswg.org/css-sizing-3/#cyclic-percentage-contribution>
+        // If max size properties or preferred size properties are set to a value containing
+        // indefinite percentages, we treat the entire value as the initial value of the property.
+        // However, for min size properties, as well as for margins and paddings,
+        // we instead resolve indefinite percentages against zero.
+        let containing_block_size_or_zero =
+            containing_block_size.map(|value| value.unwrap_or_default());
+        let pbm = self.padding_border_margin_with_writing_mode_and_containing_block_inline_size(
+            writing_mode,
+            containing_block_size_or_zero.inline,
+        );
+
+        let box_size = box_size.map_with(&containing_block_size, |size, basis| {
             size.resolve_percentages_for_preferred(*basis)
         });
         let content_box_size = style.content_box_size_for_box_size(box_size, &pbm);
         let min_size = min_size.percentages_relative_to_basis(&containing_block_size_or_zero);
         let content_min_box_size = style.content_min_box_size_for_min_size(min_size, &pbm);
-        let max_size = max_size.map_with(&containing_block.size, |size, basis| {
+        let max_size = max_size.map_with(&containing_block_size, |size, basis| {
             size.resolve_percentages_for_max(*basis)
         });
         let content_max_box_size = style.content_max_box_size_for_max_size(max_size, &pbm);
